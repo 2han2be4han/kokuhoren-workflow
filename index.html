@@ -1,0 +1,1076 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>国保連請求ワークフロー</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+:root{
+  --base:#F8FAFC; --card:#FFFFFF; --navy:#1E3A5F; --navy-soft:#2B4E7E;
+  --ink:#1F2937; --ink-soft:#475569; --line:#E2E8F0;
+  --alert:#DC2626; --amber:#F59E0B; --green:#10B981; --slate:#94A3B8;
+  --amber-bg:#FEF3C7; --green-bg:#D1FAE5; --slate-bg:#F1F5F9; --alert-bg:#FEE2E2;
+  --shadow:0 1px 3px rgba(15,23,42,.08),0 1px 2px rgba(15,23,42,.04);
+  --shadow-lg:0 4px 16px rgba(15,23,42,.10);
+  --radius:14px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  font-family:"Noto Sans JP",system-ui,sans-serif;
+  background:var(--base); color:var(--ink);
+  line-height:1.7; -webkit-font-smoothing:antialiased;
+}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}*{transition:none!important;animation:none!important}}
+
+/* ===== ヘッダー ===== */
+.appbar{
+  position:sticky; top:0; z-index:50;
+  background:var(--navy); color:#fff;
+  padding:14px 20px; box-shadow:var(--shadow-lg);
+}
+.appbar-row{display:flex; align-items:center; gap:16px; flex-wrap:wrap; max-width:1400px; margin:0 auto}
+.appbar h1{font-size:1.25rem; font-weight:900; letter-spacing:.02em; white-space:nowrap}
+.appbar h1 .sub{font-size:.7rem; font-weight:500; opacity:.8; display:block; letter-spacing:.1em}
+.month-pick{display:flex; align-items:center; gap:8px; margin-left:auto}
+.month-pick label{font-size:.8rem; opacity:.9}
+.month-pick input{
+  font-family:inherit; font-size:1rem; font-weight:700; padding:6px 10px;
+  border:none; border-radius:8px; background:rgba(255,255,255,.95); color:var(--navy);
+}
+.save-state{display:flex; align-items:center; gap:6px; font-size:.78rem; padding:5px 12px;
+  background:rgba(255,255,255,.12); border-radius:999px; white-space:nowrap}
+.save-dot{width:9px; height:9px; border-radius:50%; background:var(--green); flex:none}
+.save-state.saving .save-dot{background:var(--amber); animation:pulse 1s infinite}
+.save-state.error .save-dot{background:var(--alert)}
+.save-state.local .save-dot{background:var(--slate)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* 全体進捗バー */
+.overall{max-width:1400px; margin:12px auto 0; display:flex; align-items:center; gap:12px}
+.overall .bar{flex:1; height:10px; background:rgba(255,255,255,.2); border-radius:999px; overflow:hidden}
+.overall .bar>i{display:block; height:100%; background:linear-gradient(90deg,#34D399,#10B981); width:0; transition:width .4s ease}
+.overall .pct{font-size:.95rem; font-weight:900; min-width:46px; text-align:right}
+
+/* ===== 期限ストリップ（シグネチャー・小型版） ===== */
+.deadline-strip{
+  max-width:1400px; margin:0 auto; padding:8px 20px 2px;
+  display:grid; grid-template-columns:repeat(3,1fr); gap:8px;
+}
+.dl-card{
+  background:var(--card); border-radius:9px; padding:7px 12px;
+  box-shadow:var(--shadow); border-left:5px solid var(--slate);
+  display:flex; align-items:center; gap:9px; cursor:pointer; transition:transform .15s, box-shadow .15s;
+}
+.dl-card:hover{transform:translateY(-1px); box-shadow:var(--shadow-lg)}
+.dl-card:focus-visible{outline:3px solid var(--navy); outline-offset:2px}
+.dl-light{width:26px; height:26px; border-radius:50%; flex:none; display:grid; place-items:center;
+  font-size:.9rem; background:var(--slate-bg); color:var(--slate)}
+.dl-body{flex:1; min-width:0}
+.dl-label{font-size:.78rem; font-weight:700; color:var(--ink); line-height:1.25}
+.dl-meta{font-size:.68rem; color:var(--ink-soft)}
+.dl-count{font-size:1.1rem; font-weight:900; line-height:1; white-space:nowrap}
+.dl-count small{font-size:.62rem; font-weight:700}
+/* 状態別 */
+.dl-card.done{border-left-color:var(--green)}
+.dl-card.done .dl-light{background:var(--green-bg); color:var(--green)}
+.dl-card.done .dl-count{color:var(--green)}
+.dl-card.urgent{border-left-color:var(--alert); background:var(--alert-bg)}
+.dl-card.urgent .dl-light{background:var(--alert); color:#fff; animation:pulse 1.2s infinite}
+.dl-card.urgent .dl-count{color:var(--alert)}
+.dl-card.soon{border-left-color:var(--amber)}
+.dl-card.soon .dl-light{background:var(--amber-bg); color:var(--amber)}
+.dl-card.soon .dl-count{color:var(--amber)}
+
+/* ===== レイアウト ===== */
+.layout{max-width:1400px; margin:0 auto; display:flex; gap:24px; padding:16px 20px 80px; align-items:flex-start}
+
+/* ナビ（PC=左サイド） */
+.nav{
+  position:sticky; top:96px; width:240px; flex:none;
+  background:var(--card); border-radius:var(--radius); box-shadow:var(--shadow);
+  padding:8px; max-height:calc(100vh - 120px); overflow-y:auto;
+}
+.nav-item{
+  display:flex; align-items:center; gap:10px; padding:9px 11px; border-radius:9px;
+  cursor:pointer; font-size:.86rem; color:var(--ink-soft); border:none; background:none;
+  width:100%; text-align:left; font-family:inherit; transition:background .12s;
+}
+.nav-item:hover{background:var(--slate-bg)}
+.nav-item:focus-visible{outline:2px solid var(--navy); outline-offset:1px}
+.nav-item.active{background:var(--navy); color:#fff; font-weight:700}
+.nav-no{width:24px; height:24px; border-radius:7px; background:var(--slate-bg); color:var(--navy);
+  display:grid; place-items:center; font-weight:900; font-size:.78rem; flex:none}
+.nav-item.active .nav-no{background:rgba(255,255,255,.22); color:#fff}
+.nav-state{margin-left:auto; width:11px; height:11px; border-radius:50%; flex:none; background:var(--slate)}
+.nav-state.working{background:var(--amber)} .nav-state.done{background:var(--green)}
+.nav-item.deadline .nav-no{background:var(--alert-bg); color:var(--alert)}
+.nav-sep{height:1px; background:var(--line); margin:6px 8px}
+
+/* メイン */
+.main{flex:1; min-width:0; display:flex; flex-direction:column; gap:20px}
+
+/* フェーズカード */
+.phase{
+  background:var(--card); border-radius:var(--radius); box-shadow:var(--shadow);
+  border-left:7px solid var(--slate); overflow:hidden; scroll-margin-top:96px;
+}
+.phase.st-working{border-left-color:var(--amber)}
+.phase.st-done{border-left-color:var(--green)}
+.phase.has-deadline{border-left-color:var(--alert)}
+.phase-head{padding:18px 22px; display:flex; align-items:center; gap:14px; flex-wrap:wrap}
+.phase-no{
+  width:42px; height:42px; border-radius:12px; background:var(--navy); color:#fff;
+  display:grid; place-items:center; font-weight:900; font-size:1.2rem; flex:none;
+}
+.phase.has-deadline .phase-no{background:var(--alert)}
+.phase-titles{flex:1; min-width:0}
+.phase-title{font-size:1.18rem; font-weight:900; color:var(--ink); display:flex; align-items:center; gap:8px; flex-wrap:wrap}
+.phase-lead{font-size:.84rem; color:var(--ink-soft); margin-top:2px}
+.deadline-badge{
+  background:var(--alert); color:#fff; font-size:.78rem; font-weight:900;
+  padding:4px 12px; border-radius:999px; white-space:nowrap; display:inline-flex; align-items:center; gap:5px;
+}
+.phase-prog{display:flex; align-items:center; gap:8px; font-size:.78rem; color:var(--ink-soft); white-space:nowrap}
+.phase-prog .mini{width:70px; height:7px; background:var(--slate-bg); border-radius:999px; overflow:hidden}
+.phase-prog .mini>i{display:block; height:100%; background:var(--green); width:0; transition:width .3s}
+.phase-state-chip{
+  font-size:.74rem; font-weight:700; padding:3px 10px; border-radius:999px;
+  background:var(--slate-bg); color:var(--ink-soft); display:inline-flex; align-items:center; gap:5px;
+}
+.phase-state-chip.working{background:var(--amber-bg); color:#92600A}
+.phase-state-chip.done{background:var(--green-bg); color:#047857}
+
+.phase-body{padding:4px 22px 20px}
+.subgroup-title{font-size:.82rem; font-weight:900; color:var(--navy); margin:16px 0 6px;
+  padding-left:10px; border-left:3px solid var(--navy-soft)}
+.kid-empty{font-size:.8rem; color:var(--ink-soft); background:var(--slate-bg); border:1.5px dashed var(--line);
+  border-radius:8px; padding:10px 12px; margin-top:5px; line-height:1.5}
+
+/* チェック項目（横並び・一覧性重視） */
+.item{
+  display:flex; gap:10px; padding:7px 10px; border-radius:7px;
+  border:1.5px solid var(--line); margin-top:5px; transition:background .12s, border-color .12s;
+  align-items:center; cursor:pointer; position:relative; flex-wrap:wrap;
+}
+.item:hover{background:#FBFCFE}
+.item.working{border-color:var(--amber); background:#FFFCF5}
+.item.done{border-color:var(--green); background:#F4FCF8}
+.checkbox{
+  width:22px; height:22px; border-radius:6px; border:2.5px solid var(--slate); flex:none;
+  display:grid; place-items:center; font-size:.85rem; font-weight:900; color:#fff;
+  background:#fff; transition:all .15s;
+}
+.item.working .checkbox{border-color:var(--amber); background:var(--amber); color:#fff}
+.item.done .checkbox{border-color:var(--green); background:var(--green); color:#fff}
+.item-main{flex:1; min-width:160px; display:flex; flex-direction:column; gap:1px}
+.item-text{font-size:.92rem; font-weight:500; color:var(--ink); line-height:1.35}
+.item.done .item-text{text-decoration:line-through; text-decoration-color:var(--green); color:var(--ink-soft)}
+.item-note{font-size:.76rem; color:var(--ink-soft); margin-top:1px; display:flex; gap:4px; align-items:flex-start; line-height:1.4}
+.item-note::before{content:"💡"; flex:none}
+
+/* 書類バッジ（同じ書類は同色＋同アイコン＋太字大きめ） */
+.docs{display:flex; flex-wrap:wrap; gap:5px; margin-top:4px}
+.doc-badge{
+  display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:7px;
+  font-size:.78rem; font-weight:700; color:#fff; line-height:1.35;
+}
+.doc-badge .dn{font-weight:700; font-size:1.0em}
+
+/* 状態トグル（3状態・項目の横に揃える） */
+.state-toggle{display:flex; gap:4px; flex:none; flex-wrap:wrap; align-items:center}
+.st-btn{
+  font-family:inherit; font-size:.72rem; font-weight:700; padding:3px 10px; border-radius:999px;
+  border:1.5px solid var(--line); background:#fff; color:var(--ink-soft); cursor:pointer; transition:all .12s;
+  display:inline-flex; align-items:center; gap:4px; white-space:nowrap;
+}
+.st-btn:focus-visible{outline:2px solid var(--navy); outline-offset:1px}
+.st-btn[data-s="working"].on{background:var(--amber); border-color:var(--amber); color:#fff}
+.st-btn[data-s="done"].on{background:var(--green); border-color:var(--green); color:#fff}
+.st-btn[data-s="todo"].on{background:var(--slate); border-color:var(--slate); color:#fff}
+
+/* フォルダリンク・アコーディオン・分岐 */
+.folder-link{
+  display:inline-flex; align-items:center; gap:6px; margin-top:8px; font-size:.8rem; font-weight:700;
+  color:var(--navy); background:var(--slate-bg); padding:6px 12px; border-radius:8px;
+  text-decoration:none; border:1.5px solid var(--line);
+}
+.folder-link:hover{background:#E8EEF6}
+.accordion{margin-top:8px; border:1.5px solid var(--line); border-radius:10px; overflow:hidden}
+.acc-head{background:var(--slate-bg); padding:10px 14px; font-size:.84rem; font-weight:700; color:var(--navy);
+  cursor:pointer; display:flex; align-items:center; gap:8px; user-select:none}
+.acc-head .chev{margin-left:auto; transition:transform .2s}
+.accordion.open .acc-head .chev{transform:rotate(90deg)}
+.acc-body{max-height:0; overflow:hidden; transition:max-height .25s ease}
+.accordion.open .acc-body{max-height:900px}
+.acc-step{display:flex; gap:9px; padding:7px 14px; font-size:.84rem; border-top:1px solid var(--line); align-items:center; cursor:pointer; transition:background .12s}
+.acc-step:hover{background:#FBFCFE}
+.acc-step .n{width:20px; height:20px; border-radius:50%; background:var(--navy); color:#fff; flex:none;
+  display:grid; place-items:center; font-weight:900; font-size:.7rem}
+.acc-step .acc-txt{flex:1; min-width:0; line-height:1.4}
+.acc-step .acc-chk{width:20px; height:20px; border-radius:6px; border:2px solid var(--slate); flex:none;
+  display:grid; place-items:center; font-size:.78rem; font-weight:900; color:#fff; background:#fff; transition:all .15s}
+.acc-step.done .acc-chk{border-color:var(--green); background:var(--green)}
+.acc-step.done .acc-txt{text-decoration:line-through; text-decoration-color:var(--green); color:var(--ink-soft)}
+.acc-step.done .n{background:var(--green)}
+
+/* 分岐（差戻） */
+.branch-q{background:#FFF7ED; border:1.5px solid #FED7AA; border-radius:11px; padding:12px 14px; margin-top:10px}
+.branch-q .q-text{font-size:.92rem; font-weight:700; color:#9A3412; display:flex; align-items:center; gap:8px}
+.branch-q .yn{display:flex; gap:8px; margin-top:8px}
+.yn-btn{font-family:inherit; font-size:.82rem; font-weight:800; padding:6px 22px; border-radius:8px; cursor:pointer; border:2px solid}
+.yn-btn.yes{border-color:var(--amber); color:#92600A; background:#fff}
+.yn-btn.yes.on{background:var(--amber); color:#fff}
+.yn-btn.no{border-color:var(--slate); color:var(--ink-soft); background:#fff}
+.yn-btn.no.on{background:var(--slate); color:#fff}
+.branch-child{display:none}
+.branch-child.show{display:block}
+
+/* 差戻：対象児童の選択 */
+.kid-select{background:#EEF4FF; border:1.5px solid #C7D7F5; border-radius:11px; padding:12px 14px; margin-top:10px}
+.kid-select .q-text{font-size:.92rem; font-weight:800; color:#1E3A5F; display:flex; align-items:center; gap:8px}
+.kid-chips{display:flex; flex-wrap:wrap; gap:7px; margin-top:9px}
+.kid-chip{font-family:inherit; font-size:.84rem; font-weight:700; padding:6px 14px; border-radius:999px;
+  border:1.5px solid var(--navy-soft); background:#fff; color:var(--navy); cursor:pointer; transition:all .12s;
+  display:inline-flex; align-items:center; gap:5px}
+.kid-chip:hover{background:#F0F5FF}
+.kid-chip.on{background:var(--navy); border-color:var(--navy); color:#fff}
+.kid-chip .sib-tag,.kid-chip .tasha-tag{font-size:.66rem; font-weight:800; padding:1px 6px; border-radius:999px; line-height:1.4}
+.kid-chip .sib-tag{background:#EDE9FE; color:#6D28D9}
+.kid-chip .tasha-tag{background:#FEF3C7; color:#92600A}
+.kid-chip.on .sib-tag{background:rgba(255,255,255,.28); color:#fff}
+.kid-chip.on .tasha-tag{background:rgba(255,255,255,.28); color:#fff}
+
+/* 差戻：項目内の児童消し込みチップ */
+.done-chips{display:flex; flex-wrap:wrap; gap:6px; margin-top:7px; align-items:center}
+.dc-label{font-size:.74rem; font-weight:700; color:var(--ink-soft)}
+.done-chip{font-family:inherit; font-size:.78rem; font-weight:700; padding:3px 11px; border-radius:999px;
+  border:1.5px solid var(--line); background:#fff; color:var(--ink-soft); cursor:pointer; transition:all .12s}
+.done-chip:hover{background:#FBFCFE}
+.done-chip.done{background:var(--green); border-color:var(--green); color:#fff}
+.done-chips-empty{font-size:.74rem; color:var(--ink-soft); margin-top:6px; background:var(--slate-bg);
+  border:1.5px dashed var(--line); border-radius:8px; padding:7px 10px; line-height:1.5}
+
+/* 施設管理タブ */
+.facility-card{background:var(--card); border-radius:var(--radius); box-shadow:var(--shadow);
+  border-left:7px solid var(--navy); padding:20px 22px; scroll-margin-top:96px}
+.fac-group{margin-top:16px}
+.fac-group h3{font-size:.92rem; font-weight:900; color:var(--navy); margin-bottom:4px}
+.fac-hint{font-size:.74rem; color:var(--ink-soft); margin-bottom:8px; line-height:1.5}
+.kid-sib{font-family:inherit; font-size:.76rem; font-weight:700; padding:5px 12px; border-radius:999px;
+  border:1.5px solid var(--line); background:#fff; color:var(--ink-soft); cursor:pointer; white-space:nowrap; flex:none}
+.kid-sib.on{background:#EEF2FF; border-color:var(--navy-soft); color:var(--navy)}
+.fac-row{display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--line)}
+.fac-row input[type=text]{flex:1; font-family:inherit; font-size:.9rem; padding:7px 10px; border:1.5px solid var(--line); border-radius:8px}
+.fac-row .toggle{font-size:.76rem; font-weight:700; padding:4px 10px; border-radius:999px; border:none; cursor:pointer}
+.fac-row .toggle.on{background:var(--green-bg); color:#047857}
+.fac-row .toggle.off{background:var(--slate-bg); color:var(--ink-soft)}
+.fac-del{background:none; border:none; color:var(--alert); cursor:pointer; font-size:1.1rem; padding:4px}
+.fac-add{margin-top:10px; font-family:inherit; font-size:.84rem; font-weight:700; color:var(--navy);
+  background:var(--slate-bg); border:1.5px dashed var(--navy-soft); border-radius:8px; padding:8px 16px; cursor:pointer}
+
+/* 設定パネル */
+.settings{background:var(--card); border-radius:var(--radius); box-shadow:var(--shadow); padding:18px 22px; scroll-margin-top:96px}
+.settings h3{font-size:.95rem; font-weight:900; color:var(--navy); margin-bottom:10px; display:flex; align-items:center; gap:8px}
+.settings label{font-size:.82rem; font-weight:700; color:var(--ink-soft); display:block; margin-bottom:4px}
+.settings input[type=text]{width:100%; font-family:inherit; font-size:.86rem; padding:9px 12px; border:1.5px solid var(--line); border-radius:8px; margin-bottom:12px}
+.settings .row{display:flex; gap:10px; flex-wrap:wrap}
+.btn{font-family:inherit; font-weight:800; font-size:.86rem; padding:9px 20px; border-radius:9px; border:none; cursor:pointer}
+.btn-primary{background:var(--navy); color:#fff}
+.btn-ghost{background:var(--slate-bg); color:var(--navy)}
+.hint{font-size:.76rem; color:var(--ink-soft); margin-top:6px; line-height:1.6}
+
+/* トースト */
+.toast{position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(120%);
+  background:var(--navy); color:#fff; padding:11px 22px; border-radius:10px; font-size:.85rem; font-weight:700;
+  box-shadow:var(--shadow-lg); z-index:100; transition:transform .3s; max-width:90vw}
+.toast.show{transform:translateX(-50%) translateY(0)}
+
+/* モバイル */
+.nav-toggle{display:none}
+@media (max-width:900px){
+  .deadline-strip{grid-template-columns:1fr; gap:8px}
+  .layout{flex-direction:column; padding:12px 12px 80px}
+  .nav{position:fixed; top:0; left:0; bottom:0; width:80%; max-width:300px; z-index:60;
+    border-radius:0; max-height:100vh; transform:translateX(-105%); transition:transform .25s}
+  .nav.open{transform:translateX(0)}
+  .nav-backdrop{display:none; position:fixed; inset:0; background:rgba(15,23,42,.4); z-index:55}
+  .nav-backdrop.show{display:block}
+  .nav-toggle{display:inline-flex; align-items:center; gap:6px; background:rgba(255,255,255,.15);
+    border:none; color:#fff; font-family:inherit; font-weight:700; font-size:.82rem; padding:7px 12px; border-radius:8px; cursor:pointer}
+  .appbar h1{font-size:1.05rem}
+  .month-pick{margin-left:0}
+  .phase-head{padding:14px 16px}
+  .phase-body{padding:4px 14px 16px}
+  .overall .pct{font-size:.85rem}
+}
+@media (max-width:480px){
+  .appbar-row{gap:10px}
+  .save-state{font-size:.7rem}
+  .item-text{font-size:.9rem}
+}
+</style>
+</head>
+<body>
+<!-- ===== ヘッダー ===== -->
+<header class="appbar">
+  <div class="appbar-row">
+    <button class="nav-toggle" id="navToggle" aria-label="メニューを開く">☰ 工程一覧</button>
+    <h1>国保連請求ワークフロー<span class="sub">KOKUHOREN BILLING WORKFLOW</span></h1>
+    <div class="month-pick">
+      <label for="monthInput">対象月</label>
+      <input type="month" id="monthInput" aria-label="対象月を選択">
+    </div>
+    <div class="save-state local" id="saveState" role="status" aria-live="polite">
+      <span class="save-dot"></span><span id="saveText">ローカル保存</span>
+    </div>
+  </div>
+  <div class="overall">
+    <div class="bar"><i id="overallBar"></i></div>
+    <div class="pct" id="overallPct">0%</div>
+  </div>
+</header>
+
+<!-- ===== 期限ストリップ（シグネチャー） ===== -->
+<div class="deadline-strip" id="deadlineStrip" aria-label="重要期限"></div>
+
+<!-- ===== レイアウト ===== -->
+<div class="nav-backdrop" id="navBackdrop"></div>
+<div class="layout">
+  <nav class="nav" id="nav" aria-label="工程ナビゲーション"></nav>
+  <div class="main" id="main"></div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="workflow-data.js"></script>
+<script>
+/* ============================================================
+   状態管理：state[month][itemId] = "todo" | "working" | "done"
+   分岐：branch[month]["10-q1"] = "yes"|"no"
+   施設：facilities[month] = {jishaKids:[], tashaKids:[], jougenFax:[]}
+   すべて localStorage に即時保存 → 裏で GAS へ非同期送信（再描画なし）
+   ============================================================ */
+const LS_KEY = "kokuhoren_wf_v1";
+const LS_CFG = "kokuhoren_cfg_v1";
+let DB = loadDB();
+let CFG = loadCfg();
+let curMonth = DB.lastMonth || ymNow();
+
+function ymNow(){const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");}
+function loadDB(){try{return JSON.parse(localStorage.getItem(LS_KEY))||{months:{},lastMonth:null};}catch(e){return {months:{},lastMonth:null};}}
+function loadCfg(){try{return JSON.parse(localStorage.getItem(LS_CFG))||{gasUrl:""};}catch(e){return {gasUrl:""};}}
+function saveCfg(){localStorage.setItem(LS_CFG,JSON.stringify(CFG));}
+
+function monthData(m){
+  if(!DB.months[m]) DB.months[m]={states:{},branch:{},facilities:deepCopy(FACILITY_DEFAULTS)};
+  if(!DB.months[m].facilities) DB.months[m].facilities=deepCopy(FACILITY_DEFAULTS);
+  return DB.months[m];
+}
+function deepCopy(o){return JSON.parse(JSON.stringify(o));}
+
+/* 全項目IDを集める（進捗計算用・分岐の質問は除外） */
+function allItemIds(){
+  const ids=[];
+  WORKFLOW.forEach(p=>{
+    collectItems(p).forEach(it=>{ if(!it.branchQuestion && !it.kidSelect) ids.push(it.id); });
+  });
+  return ids;
+}
+/* 動的児童項目のID配列（Phase4 ⑧-1明細作成）
+   - 自社 一人 : p4-jisha-{kidId}
+   - 自社 兄弟 : p4-jisha-{kidId} ＋ アコーディオン8ステップ p4-jisha-{kidId}-step-{i}
+   - 他社     : p4-tasha-{kidId}                                           */
+function dynamicKidItems(p){
+  const arr=[];
+  if(!p.groups) return arr;
+  const md=monthData(curMonth);
+  const f=md.facilities||{};
+  p.groups.forEach(g=>{
+    if(!g.dynamicKids) return;
+    const kids=(g.dynamicKids==="jisha"?f.jishaKids:f.tashaKids)||[];
+    kids.filter(k=>k.enabled!==false && (k.name||"").trim()).forEach(k=>{
+      const base=`${p.id}-${g.dynamicKids}-${k.id}`;
+      arr.push({id:base});
+      if(g.dynamicKids==="jisha" && k.isSibling && p.accordions && p.accordions.jisha_fukusu){
+        p.accordions.jisha_fukusu.steps.forEach((s,i)=>arr.push({id:`${base}-step-${i}`}));
+      }
+    });
+  });
+  return arr;
+}
+function collectItems(p){
+  let arr=[];
+  if(p.items) arr=arr.concat(p.items);
+  if(p.groups) p.groups.forEach(g=>{ if(g.items) arr=arr.concat(g.items); });
+  arr=arr.concat(dynamicKidItems(p));
+  return arr;
+}
+
+/* ---- 状態取得・設定 ---- */
+function getState(id){return monthData(curMonth).states[id]||"todo";}
+function setState(id,s){
+  const md=monthData(curMonth);
+  if(s==="todo") delete md.states[id]; else md.states[id]=s;
+  persist({type:"state",month:curMonth,itemId:id,state:s});
+}
+function getBranch(id){return monthData(curMonth).branch[id]||null;}
+function setBranch(id,v){monthData(curMonth).branch[id]=v; persist({type:"branch",month:curMonth,itemId:id,state:v});}
+
+/* ---- Phase10 差戻：対象児童の選択（複数可） ----
+   全登録児童（自社＋他社）から差戻対象を選ぶ。branch["10-kids"]=[kidId,...] */
+function allKids(){
+  const f=monthData(curMonth).facilities||{};
+  const list=[];
+  (f.jishaKids||[]).forEach(k=>{ if((k.name||"").trim()) list.push({id:k.id, name:k.name, isSibling:!!k.isSibling, side:"jisha"}); });
+  (f.tashaKids||[]).forEach(k=>{ if((k.name||"").trim()) list.push({id:k.id, name:k.name, isSibling:false, side:"tasha"}); });
+  return list;
+}
+function getReturnKids(){
+  const v=monthData(curMonth).branch["10-kids"];
+  return Array.isArray(v)?v:[];
+}
+function toggleReturnKid(kidId){
+  const md=monthData(curMonth);
+  let arr=getReturnKids().slice();
+  if(arr.includes(kidId)) arr=arr.filter(x=>x!==kidId);
+  else arr.push(kidId);
+  md.branch["10-kids"]=arr;
+  persist({type:"branch",month:curMonth,itemId:"10-kids",state:arr});
+}
+/* 選択された差戻児童に兄弟（上限管理）が含まれるか */
+function returnKidsHaveSibling(){
+  const sel=getReturnKids();
+  return allKids().some(k=>k.isSibling && sel.includes(k.id));
+}
+
+/* ---- 永続化：localStorage即時 ＋ GAS非同期（再描画なし） ---- */
+let saveTimer=null;
+function persist(payload){
+  DB.lastMonth=curMonth;
+  localStorage.setItem(LS_KEY,JSON.stringify(DB));
+  updateProgress();           // 画面の進捗だけ部分更新（全再描画しない）
+  pushToGAS(payload);
+}
+function setSaveState(cls,txt){
+  const el=document.getElementById("saveState");
+  el.className="save-state "+cls;
+  document.getElementById("saveText").textContent=txt;
+}
+function pushToGAS(payload){
+  if(!CFG.gasUrl){ setSaveState("local","ローカル保存"); return; }
+  setSaveState("saving","保存中…");
+  clearTimeout(saveTimer);
+  // mode:no-cors で書き込み（レスポンス本文は読めないが書込は成立）
+  fetch(CFG.gasUrl,{
+    method:"POST", mode:"no-cors",
+    headers:{"Content-Type":"text/plain;charset=utf-8"},
+    body:JSON.stringify({...payload, month:curMonth, ts:new Date().toISOString()})
+  }).then(()=>{ setSaveState("","クラウド保存済み"); })
+    .catch(()=>{ setSaveState("error","通信失敗・端末に保存"); });
+}
+
+/* ============================================================
+   描画
+   ============================================================ */
+function render(){
+  renderNav();
+  renderMain();
+  renderDeadlines();
+  updateProgress();
+}
+
+/* ---- ナビ ---- */
+function renderNav(){
+  const nav=document.getElementById("nav");
+  nav.innerHTML="";
+  WORKFLOW.forEach(p=>{
+    const b=document.createElement("button");
+    b.className="nav-item"+(p.deadline?" deadline":"");
+    b.dataset.target=p.id;
+    b.innerHTML=`<span class="nav-no">${p.no}</span>
+      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.title}</span>
+      <span class="nav-state" data-navstate="${p.id}"></span>`;
+    b.onclick=()=>{jumpTo(p.id); closeNav();};
+    nav.appendChild(b);
+  });
+  const sep=document.createElement("div"); sep.className="nav-sep"; nav.appendChild(sep);
+  // 施設管理
+  const fac=document.createElement("button");
+  fac.className="nav-item"; fac.dataset.target="facility";
+  fac.innerHTML=`<span class="nav-no">🏢</span><span style="flex:1">施設・対象管理</span>`;
+  fac.onclick=()=>{jumpTo("facility"); closeNav();}; nav.appendChild(fac);
+  // 設定
+  const st=document.createElement("button");
+  st.className="nav-item"; st.dataset.target="settings";
+  st.innerHTML=`<span class="nav-no">⚙️</span><span style="flex:1">スプレッドシート設定</span>`;
+  st.onclick=()=>{jumpTo("settings"); closeNav();}; nav.appendChild(st);
+}
+
+/* ---- メイン描画 ---- */
+function renderMain(){
+  const main=document.getElementById("main");
+  main.innerHTML="";
+  WORKFLOW.forEach(p=>main.appendChild(renderPhase(p)));
+  main.appendChild(renderFacility());
+  main.appendChild(renderSettings());
+}
+
+function docBadges(docIds){
+  if(!docIds||!docIds.length) return "";
+  return `<div class="docs">`+docIds.map(d=>{
+    const m=DOC_MAP[d]; if(!m) return "";
+    return `<span class="doc-badge" style="background:${m.color}">
+      <span aria-hidden="true">${m.icon}</span><span class="dn">${m.name}</span></span>`;
+  }).join("")+`</div>`;
+}
+
+/* 児童単位の動的項目（Phase4 ⑧-1明細作成） */
+function renderKidItem(p, g, k){
+  const itemId=`${p.id}-${g.dynamicKids}-${k.id}`;
+  const st=getState(itemId);
+  let label, note;
+  if(g.dynamicKids==="jisha"){
+    if(k.isSibling){ label=`${k.name}：兄弟（上限管理手順）`; note="下の手順を1つずつ展開して処理"; }
+    else { label=`${k.name}：一人（通常処理）`; note=""; }
+  } else {
+    label=`${k.name}：他社あり（管理結果額1・金額0円）`; note="センター提出書類作成時は暫定で算出";
+  }
+  const el=document.createElement("div");
+  el.className="item "+st; el.dataset.item=itemId;
+  const mark=st==="done"?"✓":(st==="working"?"▶":"");
+  el.innerHTML=`
+    <div class="checkbox" aria-hidden="true">${mark}</div>
+    <div class="item-main">
+      <div class="item-text">${label}</div>
+      ${note?`<div class="item-note">${note}</div>`:""}
+      <div class="docs"><span class="doc-badge" style="background:${DOC_MAP.meisai1.color}">
+        <span aria-hidden="true">${DOC_MAP.meisai1.icon}</span><span class="dn">${DOC_MAP.meisai1.name}</span></span></div>
+    </div>
+    <div class="state-toggle" role="group" aria-label="状態切替">
+      <button class="st-btn" data-s="todo">○ 未完了</button>
+      <button class="st-btn" data-s="working">▶ 作業中</button>
+      <button class="st-btn" data-s="done">✓ 完了</button>
+    </div>`;
+  el.onclick=(e)=>{
+    if(e.target.closest(".st-btn")) return;
+    if(e.target.closest(".checkbox")){
+      const ns=getState(itemId)==="done"?"todo":"done";
+      setState(itemId,ns); refreshKidItem(p,g,k,itemId);
+    }
+  };
+  el.querySelectorAll(".st-btn").forEach(btn=>{
+    if(btn.dataset.s===st) btn.classList.add("on");
+    btn.onclick=(e)=>{e.stopPropagation(); setState(itemId,btn.dataset.s); refreshKidItem(p,g,k,itemId);};
+  });
+  return el;
+}
+function refreshKidItem(p,g,k,itemId){
+  const old=document.querySelector(`[data-item="${itemId}"]`);
+  if(!old) return;
+  old.replaceWith(renderKidItem(p,g,k));
+  updatePhaseStates();
+}
+
+function renderItem(it){
+  const wrap=document.createElement("div");
+  // 差戻：対象児童の選択（複数可）
+  if(it.kidSelect){
+    const box=document.createElement("div");
+    box.className="kid-select"; box.dataset.kidselect=it.id;
+    const kids=allKids();
+    const sel=getReturnKids();
+    let chips;
+    if(!kids.length){
+      chips=`<div class="kid-empty">「施設・対象管理」タブで児童を登録すると、ここで差戻対象を選べます。</div>`;
+    } else {
+      chips=`<div class="kid-chips">`+kids.map(k=>{
+        const on=sel.includes(k.id);
+        return `<button class="kid-chip ${on?"on":""}" data-kid="${k.id}">
+          ${on?"✓ ":""}${k.name}${k.isSibling?'<span class="sib-tag">兄弟</span>':''}${k.side==="tasha"?'<span class="tasha-tag">他社</span>':''}</button>`;
+      }).join("")+`</div>`;
+    }
+    box.innerHTML=`<div class="q-text">🔁 ${it.text}</div>
+      ${it.note?`<div class="item-note">${it.note}</div>`:""}
+      ${chips}`;
+    box.querySelectorAll(".kid-chip").forEach(btn=>{
+      btn.onclick=()=>{ toggleReturnKid(btn.dataset.kid); render(); jumpTo("p10",false); };
+    });
+    return box;
+  }
+  // 分岐の質問
+  if(it.branchQuestion){
+    const cur=getBranch(it.id);
+    const q=document.createElement("div");
+    q.className="branch-q"; q.dataset.branchq=it.id;
+    q.innerHTML=`<div class="q-text">❓ ${it.text}</div>
+      ${it.note?`<div class="item-note">${it.note}</div>`:""}
+      <div class="yn">
+        <button class="yn-btn yes ${cur==="yes"?"on":""}" data-yn="yes">✔ YES</button>
+        <button class="yn-btn no ${cur==="no"?"on":""}" data-yn="no">✕ NO</button>
+      </div>`;
+    q.querySelectorAll(".yn-btn").forEach(btn=>{
+      btn.onclick=()=>{ setBranch(it.id,btn.dataset.yn); render(); jumpTo("p10",true); };
+    });
+    return q;
+  }
+  // 通常項目
+  const st=getState(it.id);
+  const el=document.createElement("div");
+  el.className="item "+st; el.dataset.item=it.id;
+  const mark=st==="done"?"✓":(st==="working"?"▶":"");
+  // 差戻の児童消し込みチップ（kidChips項目のみ）
+  let kidChipsHtml="";
+  if(it.kidChips){
+    const sel=getReturnKids();
+    const kids=allKids().filter(k=>sel.includes(k.id));
+    if(kids.length){
+      kidChipsHtml=`<div class="done-chips" data-donechips="${it.id}">
+        <span class="dc-label">完了した児童：</span>`+kids.map(k=>{
+        const done=getState(`${it.id}__kid-${k.id}`)==="done";
+        return `<button class="done-chip ${done?"done":""}" data-kid="${k.id}">${done?"✓ ":""}${k.name}</button>`;
+      }).join("")+`</div>`;
+    } else {
+      kidChipsHtml=`<div class="done-chips-empty">上の「差戻に下記の児童はいますか？」で対象児童を選ぶと、ここに完了チェック用の児童が出ます。</div>`;
+    }
+  }
+  el.innerHTML=`
+    <div class="checkbox" aria-hidden="true">${mark}</div>
+    <div class="item-main">
+      <div class="item-text">${it.text}</div>
+      ${it.note?`<div class="item-note">${it.note}</div>`:""}
+      ${docBadges(it.docs)}
+      ${it.folderLink?`<a class="folder-link" href="file:///${FOLDER_PATH.replace(/\\/g,'/')}" onclick="return openFolder(event)">📂 上限管理フォルダを開く</a>`:""}
+      ${kidChipsHtml}
+    </div>
+    <div class="state-toggle" role="group" aria-label="状態切替">
+      <button class="st-btn" data-s="todo">○ 未完了</button>
+      <button class="st-btn" data-s="working">▶ 作業中</button>
+      <button class="st-btn" data-s="done">✓ 完了</button>
+    </div>`;
+  // チェックボックスクリック＝完了トグル
+  el.querySelector(".checkbox").parentElement.onclick=(e)=>{
+    if(e.target.closest(".st-btn")||e.target.closest(".folder-link")||e.target.closest(".done-chip")) return;
+    if(e.target.closest(".checkbox")){
+      const ns=getState(it.id)==="done"?"todo":"done";
+      setState(it.id,ns); refreshItem(it.id);
+    }
+  };
+  el.querySelectorAll(".st-btn").forEach(btn=>{
+    if(btn.dataset.s===st) btn.classList.add("on");
+    btn.onclick=(e)=>{e.stopPropagation(); setState(it.id,btn.dataset.s); refreshItem(it.id);};
+  });
+  // 差戻児童チップの消し込み
+  el.querySelectorAll(".done-chip").forEach(btn=>{
+    btn.onclick=(e)=>{
+      e.stopPropagation();
+      const key=`${it.id}__kid-${btn.dataset.kid}`;
+      const ns=getState(key)==="done"?"todo":"done";
+      setState(key,ns);
+      btn.classList.toggle("done",ns==="done");
+      btn.textContent=(ns==="done"?"✓ ":"")+allKids().find(k=>k.id===btn.dataset.kid).name;
+    };
+  });
+  return el;
+}
+
+/* 1項目だけ再描画（全体を再描画せずチラつき防止） */
+function refreshItem(id){
+  const old=document.querySelector(`[data-item="${id}"]`);
+  if(!old) return;
+  const it=findItem(id);
+  const fresh=renderItem(it);
+  old.replaceWith(fresh);
+  updatePhaseStates();
+}
+function findItem(id){
+  for(const p of WORKFLOW){ for(const it of collectItems(p)){ if(it.id===id) return it; } }
+  return null;
+}
+
+function renderPhase(p){
+  const sec=document.createElement("section");
+  sec.className="phase"; sec.id=p.id; sec.dataset.phase=p.id;
+  // ヘッド
+  const head=document.createElement("div");
+  head.className="phase-head";
+  head.innerHTML=`
+    <div class="phase-no">${p.no}</div>
+    <div class="phase-titles">
+      <div class="phase-title"><span aria-hidden="true">${p.icon}</span>${p.title}
+        ${p.deadline?`<span class="deadline-badge">🚨 毎月${p.deadline}日まで</span>`:""}</div>
+      <div class="phase-lead">${p.lead}</div>
+    </div>
+    <div class="phase-prog">
+      <span class="phase-state-chip" data-chip="${p.id}">未着手</span>
+      <span class="mini"><i data-mini="${p.id}"></i></span>
+      <span data-count="${p.id}">0/0</span>
+    </div>`;
+  sec.appendChild(head);
+  // ボディ
+  const body=document.createElement("div"); body.className="phase-body";
+  if(p.groups){
+    p.groups.forEach(g=>{
+      const t=document.createElement("div"); t.className="subgroup-title"; t.textContent=g.subtitle; body.appendChild(t);
+      if(g.note){const n=document.createElement("div");n.className="item-note";n.style.margin="2px 0 4px";n.textContent=g.note;body.appendChild(n);}
+      // 児童の動的生成
+      if(g.dynamicKids){
+        const md=monthData(curMonth);
+        const kids=(g.dynamicKids==="jisha"?md.facilities.jishaKids:md.facilities.tashaKids)||[];
+        const active=kids.filter(k=>k.enabled!==false && (k.name||"").trim());
+        if(!active.length){
+          const empty=document.createElement("div"); empty.className="kid-empty";
+          empty.textContent=`「施設・対象管理」タブで${g.dynamicKids==="jisha"?"自社":"他社"}児童を登録すると、ここに児童ごとの項目が出ます。`;
+          body.appendChild(empty);
+        } else {
+          active.forEach(k=>{
+            body.appendChild(renderKidItem(p,g,k));
+            // 自社・兄弟ならアコーディオン展開
+            if(g.dynamicKids==="jisha" && k.isSibling && p.accordions && p.accordions.jisha_fukusu){
+              body.appendChild(renderAccordion(p.accordions.jisha_fukusu, `${p.id}-${g.dynamicKids}-${k.id}`));
+            }
+          });
+        }
+      } else {
+        g.items.forEach(it=>{
+          body.appendChild(renderItem(it));
+          if(it.accordion&&p.accordions&&p.accordions[it.accordion]) body.appendChild(renderAccordion(p.accordions[it.accordion], `${p.id}-${it.id}-${it.accordion}`));
+        });
+      }
+    });
+    if(p.manageNote){const n=document.createElement("div");n.className="item-note";n.style.marginTop="12px";n.textContent=p.manageNote;body.appendChild(n);}
+  } else if(p.branch){
+    p.items.forEach(it=>{
+      const node=renderItem(it);
+      if(it.branchChild){ // 分岐で開く子項目
+        const w=document.createElement("div");
+        w.className="branch-child"; w.dataset.child=it.branchChild;
+        if(it.siblingOnly) w.dataset.siblingonly="1";
+        w.appendChild(node); body.appendChild(w);
+      } else body.appendChild(node);
+    });
+  } else {
+    p.items.forEach(it=>body.appendChild(renderItem(it)));
+  }
+  sec.appendChild(body);
+  return sec;
+}
+
+function renderAccordion(acc, idPrefix){
+  const el=document.createElement("div"); el.className="accordion";
+  // 完了ステップ数を数えて見出しに出す
+  const total=acc.steps.length;
+  const head=document.createElement("div"); head.className="acc-head";
+  const updateHead=()=>{
+    let done=0;
+    for(let i=0;i<total;i++){ if(getState(`${idPrefix}-step-${i}`)==="done") done++; }
+    head.innerHTML=`📑 ${acc.title} <span class="acc-prog" style="font-size:.78rem;color:var(--ink-soft);font-weight:700">(${done}/${total})</span><span class="chev">▶</span>`;
+  };
+  updateHead();
+  head.onclick=()=>el.classList.toggle("open");
+  el.appendChild(head);
+  const bodyWrap=document.createElement("div"); bodyWrap.className="acc-body";
+  acc.steps.forEach((s,i)=>{
+    const stepId=`${idPrefix}-step-${i}`;
+    const st=getState(stepId);
+    const row=document.createElement("div");
+    row.className="acc-step"+(st==="done"?" done":"");
+    row.innerHTML=`<span class="n">${i+1}</span>
+      <span class="acc-txt">${s}</span>
+      <span class="acc-chk" aria-hidden="true">${st==="done"?"✓":""}</span>`;
+    row.onclick=()=>{
+      const ns=getState(stepId)==="done"?"todo":"done";
+      setState(stepId,ns);
+      row.className="acc-step"+(ns==="done"?" done":"");
+      row.querySelector(".acc-chk").textContent=ns==="done"?"✓":"";
+      updateHead();
+      updatePhaseStates();
+    };
+    bodyWrap.appendChild(row);
+  });
+  el.appendChild(bodyWrap);
+  return el;
+}
+
+/* ---- 施設・対象管理（自社児童／他社児童／上限管理FAX先） ---- */
+function kidId(){ return "kid_"+Math.random().toString(36).slice(2,9); }
+
+function renderFacility(){
+  const md=monthData(curMonth);
+  const f=md.facilities;
+  // 後方互換：旧構造(jisha/tasha)が残っていたら新キーへ寄せる
+  if(!f.jishaKids) f.jishaKids=[];
+  if(!f.tashaKids) f.tashaKids=[];
+  if(!f.jougenFax) f.jougenFax=(f.tasha||[]).map(x=>({name:x.name,enabled:x.enabled!==false}));
+  // ID補完
+  f.jishaKids.forEach(k=>{ if(!k.id) k.id=kidId(); });
+  f.tashaKids.forEach(k=>{ if(!k.id) k.id=kidId(); });
+
+  const sec=document.createElement("section");
+  sec.className="facility-card"; sec.id="facility";
+  sec.innerHTML=`<div class="phase-title"><span aria-hidden="true">🏢</span>施設・対象管理</div>
+    <div class="phase-lead">児童名と上限管理FAX先を管理します。ここで登録した児童が「⑧-1明細作成」に自動で並びます。スプレッドシートにも保存されます。</div>`;
+
+  const rerender=()=>{ persist({type:"facility",facilities:md.facilities}); render(); jumpTo("facility",false); };
+
+  // --- 自社児童（名前＋兄弟チェック） ---
+  const g1=document.createElement("div"); g1.className="fac-group";
+  g1.innerHTML=`<h3>🧒 自社児童</h3>
+    <div class="fac-hint">「兄弟」にチェックを入れた児童は、明細作成で上限管理手順（アコーディオン）が展開されます。</div>`;
+  f.jishaKids.forEach((k,idx)=>{
+    const row=document.createElement("div"); row.className="fac-row";
+    const inp=document.createElement("input"); inp.type="text"; inp.value=k.name; inp.placeholder="児童名";
+    inp.oninput=()=>{k.name=inp.value; persist({type:"facility",facilities:md.facilities});};
+    inp.onblur=()=>{ render(); jumpTo("facility",false); }; // 明細側へ反映
+    const sib=document.createElement("button"); sib.className="kid-sib "+(k.isSibling?"on":"");
+    sib.innerHTML=k.isSibling?"👨‍👦 兄弟":"👤 一人";
+    sib.title="一人／兄弟を切替";
+    sib.onclick=()=>{k.isSibling=!k.isSibling; rerender();};
+    const del=document.createElement("button"); del.className="fac-del"; del.textContent="🗑"; del.title="削除";
+    del.onclick=()=>{f.jishaKids.splice(idx,1); rerender();};
+    row.append(inp,sib,del); g1.appendChild(row);
+  });
+  const add1=document.createElement("button"); add1.className="fac-add"; add1.textContent="＋ 自社児童を追加";
+  add1.onclick=()=>{f.jishaKids.push({id:kidId(),name:"",isSibling:false,enabled:true}); rerender();};
+  g1.appendChild(add1); sec.appendChild(g1);
+
+  // --- 他社児童（名前のみ） ---
+  const g2=document.createElement("div"); g2.className="fac-group";
+  g2.innerHTML=`<h3>🧑‍🤝‍🧑 他社児童</h3>
+    <div class="fac-hint">他社利用がある児童。明細作成で「管理結果額1・金額0円」の項目として並びます。</div>`;
+  f.tashaKids.forEach((k,idx)=>{
+    const row=document.createElement("div"); row.className="fac-row";
+    const inp=document.createElement("input"); inp.type="text"; inp.value=k.name; inp.placeholder="児童名";
+    inp.oninput=()=>{k.name=inp.value; persist({type:"facility",facilities:md.facilities});};
+    inp.onblur=()=>{ render(); jumpTo("facility",false); };
+    const del=document.createElement("button"); del.className="fac-del"; del.textContent="🗑"; del.title="削除";
+    del.onclick=()=>{f.tashaKids.splice(idx,1); rerender();};
+    row.append(inp,del); g2.appendChild(row);
+  });
+  const add2=document.createElement("button"); add2.className="fac-add"; add2.textContent="＋ 他社児童を追加";
+  add2.onclick=()=>{f.tashaKids.push({id:kidId(),name:"",enabled:true}); rerender();};
+  g2.appendChild(add2); sec.appendChild(g2);
+
+  // --- 上限管理FAX先（施設名＋有効/無効） ---
+  const g3=document.createElement("div"); g3.className="fac-group";
+  g3.innerHTML=`<h3>📠 上限管理FAX先</h3>
+    <div class="fac-hint">上限管理結果票のFAX送付先施設（ウィズユー・キッズワンハート等）。</div>`;
+  f.jougenFax.forEach((x,idx)=>{
+    const row=document.createElement("div"); row.className="fac-row";
+    const inp=document.createElement("input"); inp.type="text"; inp.value=x.name; inp.placeholder="施設名";
+    inp.oninput=()=>{x.name=inp.value; persist({type:"facility",facilities:md.facilities});};
+    const tg=document.createElement("button"); tg.className="toggle "+(x.enabled?"on":"off");
+    tg.textContent=x.enabled?"有効":"無効";
+    tg.onclick=()=>{x.enabled=!x.enabled; tg.className="toggle "+(x.enabled?"on":"off"); tg.textContent=x.enabled?"有効":"無効"; persist({type:"facility",facilities:md.facilities});};
+    const del=document.createElement("button"); del.className="fac-del"; del.textContent="🗑"; del.title="削除";
+    del.onclick=()=>{f.jougenFax.splice(idx,1); rerender();};
+    row.append(inp,tg,del); g3.appendChild(row);
+  });
+  const add3=document.createElement("button"); add3.className="fac-add"; add3.textContent="＋ FAX先施設を追加";
+  add3.onclick=()=>{f.jougenFax.push({name:"",enabled:true}); rerender();};
+  g3.appendChild(add3); sec.appendChild(g3);
+
+  return sec;
+}
+
+/* ---- 設定 ---- */
+function renderSettings(){
+  const sec=document.createElement("section");
+  sec.className="settings"; sec.id="settings";
+  sec.innerHTML=`<h3>⚙️ スプレッドシート設定</h3>
+    <label for="gasUrl">GAS WebアプリのURL（デプロイ後のURLを貼り付け）</label>
+    <input type="text" id="gasUrl" placeholder="https://script.google.com/macros/s/＿＿＿/exec" value="${CFG.gasUrl||""}">
+    <div class="row">
+      <button class="btn btn-primary" id="saveGas">保存して連携開始</button>
+      <button class="btn btn-ghost" id="loadCloud">クラウドから読込（途中再開）</button>
+      <button class="btn btn-ghost" id="resetMonth">この月をリセット</button>
+    </div>
+    <div class="hint">
+      ・URL未設定でも端末内（localStorage）に自動保存され、すべての機能が使えます。<br>
+      ・URLを設定すると、チェックのたびに自動でスプレッドシートへ保存します（画面はそのまま・再読込なし）。<br>
+      ・別端末や翌月の途中再開は「クラウドから読込」で復元できます。
+    </div>`;
+  sec.querySelector("#saveGas").onclick=()=>{
+    CFG.gasUrl=sec.querySelector("#gasUrl").value.trim(); saveCfg();
+    toast(CFG.gasUrl?"スプレッドシート連携を開始しました":"URLを空にしました（ローカル保存のみ）");
+    setSaveState(CFG.gasUrl?"":"local",CFG.gasUrl?"クラウド保存済み":"ローカル保存");
+  };
+  sec.querySelector("#loadCloud").onclick=()=>loadFromGAS();
+  sec.querySelector("#resetMonth").onclick=()=>{
+    if(confirm(curMonth+" の進捗をすべてリセットします。よろしいですか？")){
+      DB.months[curMonth]={states:{},branch:{},facilities:deepCopy(FACILITY_DEFAULTS)};
+      localStorage.setItem(LS_KEY,JSON.stringify(DB)); render(); toast("リセットしました");
+    }
+  };
+  return sec;
+}
+
+/* ---- 進捗・状態の部分更新 ---- */
+function updateProgress(){
+  updatePhaseStates();
+  updateBranchVisibility();
+  // 全体
+  const ids=allItemIds();
+  const done=ids.filter(id=>getState(id)==="done").length;
+  const pct=ids.length?Math.round(done/ids.length*100):0;
+  const bar=document.getElementById("overallBar"); if(bar) bar.style.width=pct+"%";
+  const pe=document.getElementById("overallPct"); if(pe) pe.textContent=pct+"%";
+  renderDeadlines();
+}
+function phaseStateOf(p){
+  const items=collectItems(p).filter(it=>!it.branchQuestion && !it.kidSelect);
+  if(!items.length) return "todo";
+  const states=items.map(it=>getState(it.id));
+  if(states.every(s=>s==="done")) return "done";
+  if(states.some(s=>s!=="todo")) return "working";
+  return "todo";
+}
+function phaseCountOf(p){
+  const items=collectItems(p).filter(it=>!it.branchQuestion && !it.kidSelect);
+  const done=items.filter(it=>getState(it.id)==="done").length;
+  return {done,total:items.length};
+}
+function updatePhaseStates(){
+  WORKFLOW.forEach(p=>{
+    const st=phaseStateOf(p), {done,total}=phaseCountOf(p);
+    const sec=document.getElementById(p.id);
+    if(sec){ sec.classList.remove("st-working","st-done");
+      if(!p.deadline){ if(st==="working")sec.classList.add("st-working"); if(st==="done")sec.classList.add("st-done"); }
+      else if(st==="done"){sec.classList.remove("has-deadline"); sec.classList.add("st-done");}
+    }
+    const chip=document.querySelector(`[data-chip="${p.id}"]`);
+    if(chip){chip.className="phase-state-chip "+(st==="todo"?"":st);
+      chip.textContent=st==="done"?"✓ 完了":(st==="working"?"▶ 作業中":"未着手");}
+    const mini=document.querySelector(`[data-mini="${p.id}"]`);
+    if(mini) mini.style.width=(total?done/total*100:0)+"%";
+    const cnt=document.querySelector(`[data-count="${p.id}"]`);
+    if(cnt) cnt.textContent=`${done}/${total}`;
+    const ns=document.querySelector(`[data-navstate="${p.id}"]`);
+    if(ns) ns.className="nav-state "+(st==="todo"?"":st);
+  });
+}
+/* 差戻の分岐表示 */
+function updateBranchVisibility(){
+  const q1=getBranch("10-q1"), q2=getBranch("10-q2");
+  document.querySelectorAll('[data-child="yes"]').forEach(e=>e.classList.toggle("show",q1==="yes"));
+  document.querySelectorAll('[data-child="yes2"]').forEach(e=>e.classList.toggle("show",q1==="yes"&&q2==="yes"));
+  // siblingOnly項目（10-3 上限管理FAX）は、差戻児童に兄弟が含まれるときだけ表示
+  const hasSib=returnKidsHaveSibling();
+  document.querySelectorAll('[data-siblingonly="1"]').forEach(e=>{
+    const branchOpen=q1==="yes"&&q2==="yes";
+    e.classList.toggle("show", branchOpen&&hasSib);
+  });
+}
+
+/* ---- 期限ストリップ ---- */
+function renderDeadlines(){
+  const strip=document.getElementById("deadlineStrip");
+  if(!strip) return;
+  const today=new Date(); const tDay=today.getDate();
+  strip.innerHTML="";
+  DEADLINES.forEach(dl=>{
+    const p=WORKFLOW.find(x=>x.id===dl.phaseId);
+    const st=p?phaseStateOf(p):"todo";
+    const remain=dl.day - tDay; // 当月の締切日まで（簡易）
+    let cls="", light="⏳", count="", meta="";
+    if(st==="done"){ cls="done"; light="✓"; count="完了"; meta="提出済み"; }
+    else if(remain<0){ cls="urgent"; light="🚨"; count="超過"; meta=`${dl.day}日が締切`; }
+    else if(remain<=1){ cls="urgent"; light="🚨"; count=remain===0?"本日":"明日"; meta=`${dl.day}日まで`; }
+    else if(remain<=2){ cls="soon"; light="⏰"; count=`あと${remain}`; meta=`${dl.day}日まで`; }
+    else { cls=""; light="📅"; count=`あと${remain}`; meta=`${dl.day}日まで`; }
+    const card=document.createElement("button");
+    card.className="dl-card "+cls; card.setAttribute("aria-label",`${dl.label} ${meta} ${count}`);
+    card.innerHTML=`<span class="dl-light" aria-hidden="true">${light}</span>
+      <div class="dl-body"><div class="dl-label">${dl.label}</div><div class="dl-meta">毎月${dl.day}日 ／ ${meta}</div></div>
+      <div class="dl-count">${count}${(count.startsWith("あと"))?'<small>日</small>':''}</div>`;
+    card.onclick=()=>jumpTo(dl.phaseId);
+    strip.appendChild(card);
+  });
+}
+
+/* ---- ジャンプ・ナビ開閉 ---- */
+function safeScroll(el,opt){ if(el&&typeof el.scrollIntoView==="function") el.scrollIntoView(opt); }
+function jumpTo(id,noClose){
+  safeScroll(document.getElementById(id),{behavior:"smooth",block:"start"});
+  document.querySelectorAll(".nav-item").forEach(n=>n.classList.toggle("active",n.dataset.target===id));
+}
+function openNav(){document.getElementById("nav").classList.add("open");document.getElementById("navBackdrop").classList.add("show");}
+function closeNav(){document.getElementById("nav").classList.remove("open");document.getElementById("navBackdrop").classList.remove("show");}
+
+/* ---- フォルダリンク ---- */
+function openFolder(e){
+  // file:// は環境依存。Windows社内PCで開けない場合に備えパスをコピー提示
+  navigator.clipboard&&navigator.clipboard.writeText(FOLDER_PATH).then(()=>toast("フォルダパスをコピーしました（エクスプローラに貼り付け）")).catch(()=>{});
+  return true; // 既定のfile://遷移も試みる
+}
+
+/* ---- トースト ---- */
+let toastTimer=null;
+function toast(msg){
+  const t=document.getElementById("toast"); t.textContent=msg; t.classList.add("show");
+  clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove("show"),2600);
+}
+
+/* ---- GAS読込（途中再開） ---- */
+function loadFromGAS(){
+  if(!CFG.gasUrl){ toast("先にGAS URLを設定してください"); return; }
+  setSaveState("saving","読込中…");
+  fetch(CFG.gasUrl+"?action=load&month="+encodeURIComponent(curMonth))
+    .then(r=>r.json())
+    .then(data=>{
+      if(data&&data.states){ monthData(curMonth).states=data.states||{}; monthData(curMonth).branch=data.branch||{};
+        if(data.facilities){
+          const fc=data.facilities;
+          // 旧構造(jisha/tasha)が来たら新構造へ寄せる
+          if(!fc.jishaKids && (fc.jisha||fc.tasha)){
+            fc.jishaKids=fc.jishaKids||[];
+            fc.tashaKids=fc.tashaKids||[];
+            fc.jougenFax=(fc.tasha||[]).map(x=>({name:x.name,enabled:x.enabled!==false}));
+          }
+          monthData(curMonth).facilities=fc;
+        }
+        localStorage.setItem(LS_KEY,JSON.stringify(DB)); render(); scrollToResume();
+        toast("クラウドから復元しました"); setSaveState("","クラウド保存済み");
+      } else { toast("この月の記録は見つかりませんでした"); setSaveState("","クラウド保存済み"); }
+    })
+    .catch(()=>{ toast("読込に失敗しました（端末の記録を表示中）"); setSaveState("error","通信失敗"); });
+}
+
+/* 最後の作業中項目へ自動スクロール（途中再開） */
+function scrollToResume(){
+  const ids=allItemIds();
+  let target=ids.find(id=>getState(id)==="working");
+  if(!target){ // 作業中がなければ最初の未完了
+    target=ids.find(id=>getState(id)!=="done");
+  }
+  if(target){ const el=document.querySelector(`[data-item="${target}"]`);
+    if(el) setTimeout(()=>safeScroll(el,{behavior:"smooth",block:"center"}),300); }
+}
+
+/* ---- 月切替 ---- */
+function changeMonth(m){
+  curMonth=m; DB.lastMonth=m; localStorage.setItem(LS_KEY,JSON.stringify(DB));
+  render();
+  if(CFG.gasUrl) loadFromGAS(); else scrollToResume();
+}
+
+/* ============================================================
+   初期化
+   ============================================================ */
+function init(){
+  document.getElementById("monthInput").value=curMonth;
+  document.getElementById("monthInput").onchange=(e)=>changeMonth(e.target.value);
+  document.getElementById("navToggle").onclick=openNav;
+  document.getElementById("navBackdrop").onclick=closeNav;
+  render();
+  setSaveState(CFG.gasUrl?"":"local",CFG.gasUrl?"クラウド保存済み":"ローカル保存");
+  // 起動時：途中の項目へ
+  if(CFG.gasUrl) loadFromGAS(); else scrollToResume();
+}
+init();
+</script>
+</body>
+</html>
