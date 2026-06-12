@@ -123,18 +123,50 @@ function loadMonth_(ss, month){
   const fac = ss.getSheetByName(SHEET_FAC);
   if(fac){
     const d = fac.getDataRange().getValues();
+    let hasCurrentFac = false;
     // 列: 対象月,区分,ID,名前,兄弟,有効
+    // 1. まず当月のデータを検索
     for(let i=1;i<d.length;i++){
-      if(d[i][0]!==month) continue;
-      const k = d[i][1];
-      if(!out.facilities[k]) out.facilities[k]=[];
-      const enabled = d[i][5]===true || d[i][5]==="TRUE";
-      if(k==="jishaKids"){
-        out.facilities[k].push({id:d[i][2]||"", name:d[i][3], isSibling:(d[i][4]===true||d[i][4]==="TRUE"), enabled:enabled});
-      } else if(k==="tashaKids"){
-        out.facilities[k].push({id:d[i][2]||"", name:d[i][3], enabled:enabled});
-      } else if(k==="jougenFax"){
-        out.facilities[k].push({name:d[i][3], enabled:enabled});
+      if(d[i][0]===month){
+        hasCurrentFac = true;
+        const k = d[i][1];
+        if(!out.facilities[k]) out.facilities[k]=[];
+        const enabled = d[i][5]===true || d[i][5]==="TRUE";
+        if(k==="jishaKids"){
+          out.facilities[k].push({id:d[i][2]||"", name:d[i][3], isSibling:(d[i][4]===true||d[i][4]==="TRUE"), enabled:enabled});
+        } else if(k==="tashaKids"){
+          out.facilities[k].push({id:d[i][2]||"", name:d[i][3], enabled:enabled});
+        } else if(k==="jougenFax"){
+          out.facilities[k].push({name:d[i][3], enabled:enabled});
+        }
+      }
+    }
+    // 2. 当月の施設データが無い場合、過去の最新月から引き継ぐ
+    if(!hasCurrentFac){
+      const months = [];
+      for(let i=1;i<d.length;i++){
+        const m = d[i][0];
+        if(m && m < month && months.indexOf(m) === -1){
+          months.push(m);
+        }
+      }
+      if(months.length > 0){
+        months.sort();
+        const prevMonth = months[months.length - 1];
+        for(let i=1;i<d.length;i++){
+          if(d[i][0]===prevMonth){
+            const k = d[i][1];
+            if(!out.facilities[k]) out.facilities[k]=[];
+            const enabled = d[i][5]===true || d[i][5]==="TRUE";
+            if(k==="jishaKids"){
+              out.facilities[k].push({id:d[i][2]||"", name:d[i][3], isSibling:(d[i][4]===true||d[i][4]==="TRUE"), enabled:enabled});
+            } else if(k==="tashaKids"){
+              out.facilities[k].push({id:d[i][2]||"", name:d[i][3], enabled:enabled});
+            } else if(k==="jougenFax"){
+              out.facilities[k].push({name:d[i][3], enabled:enabled});
+            }
+          }
+        }
       }
     }
   }
