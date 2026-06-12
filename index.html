@@ -894,7 +894,8 @@ function renderFacility(){
   f.jishaKids.forEach((k,idx)=>{
     const row=document.createElement("div"); row.className="fac-row";
     const inp=document.createElement("input"); inp.type="text"; inp.value=k.name; inp.placeholder="児童名";
-    inp.oninput=()=>{k.name=inp.value; persist({type:"facility",facilities:md.facilities});};
+    inp.oninput=()=>{k.name=inp.value;};
+    inp.onchange=()=>{ persist({type:"facility",facilities:md.facilities}); };
     inp.onblur=()=>{ render(); jumpTo("facility",false); }; // 明細側へ反映
     const sib=document.createElement("button"); sib.className="kid-sib "+(k.isSibling?"on":"");
     sib.innerHTML=k.isSibling?"👨‍👦 兄弟":"👤 一人";
@@ -911,11 +912,12 @@ function renderFacility(){
   // --- 他社児童（名前のみ） ---
   const g2=document.createElement("div"); g2.className="fac-group";
   g2.innerHTML=`<h3>🧑‍🤝‍🧑 他社児童</h3>
-    <div class="fac-hint">他社利用がある児童。明細作成で「管理結果額1・金額0円」の項目として並びます。</div>`;
+    <div class="fac-hint">他社利用がある児童. 明細作成で「管理結果額1・金額0円」の項目として並びます。</div>`;
   f.tashaKids.forEach((k,idx)=>{
     const row=document.createElement("div"); row.className="fac-row";
     const inp=document.createElement("input"); inp.type="text"; inp.value=k.name; inp.placeholder="児童名";
-    inp.oninput=()=>{k.name=inp.value; persist({type:"facility",facilities:md.facilities});};
+    inp.oninput=()=>{k.name=inp.value;};
+    inp.onchange=()=>{ persist({type:"facility",facilities:md.facilities}); };
     inp.onblur=()=>{ render(); jumpTo("facility",false); };
     const del=document.createElement("button"); del.className="fac-del"; del.textContent="🗑"; del.title="削除";
     del.onclick=()=>{f.tashaKids.splice(idx,1); rerender();};
@@ -932,7 +934,8 @@ function renderFacility(){
   f.jougenFax.forEach((x,idx)=>{
     const row=document.createElement("div"); row.className="fac-row";
     const inp=document.createElement("input"); inp.type="text"; inp.value=x.name; inp.placeholder="施設名";
-    inp.oninput=()=>{x.name=inp.value; persist({type:"facility",facilities:md.facilities});};
+    inp.oninput=()=>{x.name=inp.value;};
+    inp.onchange=()=>{ persist({type:"facility",facilities:md.facilities}); };
     const tg=document.createElement("button"); tg.className="toggle "+(x.enabled?"on":"off");
     tg.textContent=x.enabled?"有効":"無効";
     tg.onclick=()=>{x.enabled=!x.enabled; tg.className="toggle "+(x.enabled?"on":"off"); tg.textContent=x.enabled?"有効":"無効"; persist({type:"facility",facilities:md.facilities});};
